@@ -10,7 +10,6 @@ import {
   Moon,
   Sun,
   Download,
-  Upload,
   Calendar
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -56,7 +55,7 @@ export default function Dashboard({ onLogout }) {
     fetchRecords();
   }, [fetchRecords]);
 
-  // ================= DELETE RECORD =================
+  // ================= DELETE =================
   async function deleteRecord(id) {
     try {
       await apiFetch(`/tracker/delete/${id}`, {
@@ -75,7 +74,7 @@ export default function Dashboard({ onLogout }) {
   async function exportExcel() {
     try {
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/tracker/export?search=${search}`,
+        `/tracker/export?search=${search}`,
         { credentials: "include" }
       );
 
@@ -100,7 +99,7 @@ export default function Dashboard({ onLogout }) {
 
     try {
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/tracker/export?from=${fromDate}&to=${toDate}&search=${search}`,
+        `/tracker/export?from=${fromDate}&to=${toDate}&search=${search}`,
         { credentials: "include" }
       );
 
