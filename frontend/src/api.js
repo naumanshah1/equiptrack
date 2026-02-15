@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:5000";
+const API_URL = "https://equiptrack-q9k9.onrender.com";
 
 export async function apiFetch(path, options = {}) {
   const res = await fetch(API_URL + path, {
