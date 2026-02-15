@@ -24,32 +24,26 @@ export default function Dashboard({ onLogout }) {
 
   const [mode, setMode] = useState("daily");
   const [records, setRecords] = useState([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState("");
   const [darkMode, setDarkMode] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [deleteId, setDeleteId] = useState(null);
 
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  // ================= FETCH =================
-  const fetchRecords = useCallback(async (currentPage = 1) => {
+  // ================= FETCH RECORDS =================
+  const fetchRecords = useCallback(async () => {
     try {
       setLoading(true);
 
-      let url = `/tracker/${mode}?page=${currentPage}&search=${search}`;
+      let url = `/tracker/${mode}?search=${search}`;
 
       if ((mode === "weekly" || mode === "monthly") && fromDate && toDate) {
         url += `&from=${fromDate}&to=${toDate}`;
       }
 
       const data = await apiFetch(url);
-
-      setRecords(data.records || []);
-      setTotalPages(data.total_pages || 1);
-      setPage(data.current_page || 1);
+      setRecords(data.records || data || []);
 
     } catch {
       toast.error("Failed to load records");
@@ -59,56 +53,18 @@ export default function Dashboard({ onLogout }) {
   }, [mode, search, fromDate, toDate]);
 
   useEffect(() => {
-    fetchRecords(1);
+    fetchRecords();
   }, [fetchRecords]);
 
-  // 🔥 Auto apply filter when date changes
-  useEffect(() => {
-    if ((mode === "weekly" || mode === "monthly") && fromDate && toDate) {
-      fetchRecords(1);
-    }
-  }, [fromDate, toDate]);
-
-  // ================= QUICK FILTERS =================
-  function last7Days() {
-    const today = new Date();
-    const past = new Date();
-    past.setDate(today.getDate() - 6);
-    setFromDate(past.toISOString().slice(0, 10));
-    setToDate(today.toISOString().slice(0, 10));
-  }
-
-  function last30Days() {
-    const today = new Date();
-    const past = new Date();
-    past.setDate(today.getDate() - 29);
-    setFromDate(past.toISOString().slice(0, 10));
-    setToDate(today.toISOString().slice(0, 10));
-  }
-
-  function thisMonth() {
-    const today = new Date();
-    const first = new Date(today.getFullYear(), today.getMonth(), 1);
-    setFromDate(first.toISOString().slice(0, 10));
-    setToDate(today.toISOString().slice(0, 10));
-  }
-
-  function clearFilter() {
-    setFromDate("");
-    setToDate("");
-    fetchRecords(1);
-  }
-
-  // ================= DELETE =================
-  async function confirmDelete() {
+  // ================= DELETE RECORD =================
+  async function deleteRecord(id) {
     try {
-      await apiFetch(`/tracker/delete/${deleteId}`, {
+      await apiFetch(`/tracker/delete/${id}`, {
         method: "DELETE"
       });
 
       toast.success("Record deleted");
-      setDeleteId(null);
-      fetchRecords(page);
+      fetchRecords();
 
     } catch {
       toast.error("Delete failed");
@@ -116,36 +72,10 @@ export default function Dashboard({ onLogout }) {
   }
 
   // ================= EXPORT =================
-  async function exportTimeline() {
-
-    if (!fromDate || !toDate) {
-      toast.error("Select From and To dates");
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `http://localhost:5000/tracker/export?from=${fromDate}&to=${toDate}&search=${search}`,
-        { credentials: "include" }
-      );
-
-      const blob = await response.blob();
-      const link = document.createElement("a");
-      link.href = window.URL.createObjectURL(blob);
-      link.download = "equiptrack_timeline_export.xlsx";
-      link.click();
-
-      toast.success("Timeline export downloaded");
-
-    } catch {
-      toast.error("Timeline export failed");
-    }
-  }
-
   async function exportExcel() {
     try {
       const response = await fetch(
-        `http://localhost:5000/tracker/export?search=${search}`,
+        `${process.env.REACT_APP_API_URL}/tracker/export?search=${search}`,
         { credentials: "include" }
       );
 
@@ -162,45 +92,36 @@ export default function Dashboard({ onLogout }) {
     }
   }
 
-  async function exportPDF() {
+  async function exportTimeline() {
+    if (!fromDate || !toDate) {
+      toast.error("Select From and To dates");
+      return;
+    }
+
     try {
       const response = await fetch(
-        "http://localhost:5000/tracker/export/pdf",
+        `${process.env.REACT_APP_API_URL}/tracker/export?from=${fromDate}&to=${toDate}&search=${search}`,
         { credentials: "include" }
       );
 
       const blob = await response.blob();
       const link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
-      link.download = "equiptrack_report.pdf";
+      link.download = "equiptrack_timeline_export.xlsx";
       link.click();
 
-      toast.success("PDF downloaded");
+      toast.success("Timeline export downloaded");
 
     } catch {
-      toast.error("PDF export failed");
+      toast.error("Timeline export failed");
     }
   }
 
-  async function importExcel(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    await fetch("http://localhost:5000/tracker/import", {
-      method: "POST",
-      credentials: "include",
-      body: formData
-    });
-
-    toast.success("Import successful");
-    fetchRecords(page);
-  }
-
   async function handleLogout() {
-    await apiFetch("/logout", { method: "GET" });
+    try {
+      await apiFetch("/logout", { method: "GET" });
+    } catch {}
+
     localStorage.removeItem("role");
     onLogout();
   }
@@ -208,6 +129,7 @@ export default function Dashboard({ onLogout }) {
   return (
     <div className={darkMode ? "layout dark" : "layout light"}>
 
+      {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="logo">
           <LayoutDashboard size={20} />
@@ -220,18 +142,20 @@ export default function Dashboard({ onLogout }) {
 
         {role === "admin" && (
           <button className="menu" onClick={() => navigate("/analytics")}>
-            <BarChart3 size={18} />
-            Analytics
+            <BarChart3 size={18} /> Analytics
           </button>
         )}
 
         <button className="logout" onClick={handleLogout}>
-          <LogOut size={18} />
-          Logout
+          <LogOut size={18} /> Logout
         </button>
       </aside>
 
-      <motion.main className="content" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      {/* MAIN */}
+      <motion.main className="content"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
 
         <div className="topbar">
           <h2>{mode.toUpperCase()} TRACKER</h2>
@@ -240,30 +164,20 @@ export default function Dashboard({ onLogout }) {
 
             {(mode === "weekly" || mode === "monthly") && (
               <div className="filter-bar">
-
                 <input
                   type="date"
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
                 />
-
                 <span>to</span>
-
                 <input
                   type="date"
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
                 />
-
-                <button onClick={last7Days}>7D</button>
-                <button onClick={last30Days}>30D</button>
-                <button onClick={thisMonth}>Month</button>
-                <button className="clear-btn" onClick={clearFilter}>Clear</button>
-
-                <button className="timeline-btn" onClick={exportTimeline}>
+                <button onClick={exportTimeline}>
                   <Calendar size={16} />
                 </button>
-
               </div>
             )}
 
@@ -271,16 +185,10 @@ export default function Dashboard({ onLogout }) {
               <Download size={16} /> Excel
             </button>
 
-            <button className="export-btn" onClick={exportPDF}>
-              <Download size={16} /> PDF
-            </button>
-
-            <label className="export-btn">
-              <Upload size={16} /> Import
-              <input type="file" hidden onChange={importExcel} />
-            </label>
-
-            <button className="theme-toggle" onClick={() => setDarkMode(!darkMode)}>
+            <button
+              className="theme-toggle"
+              onClick={() => setDarkMode(!darkMode)}
+            >
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
@@ -289,6 +197,7 @@ export default function Dashboard({ onLogout }) {
           </div>
         </div>
 
+        {/* SEARCH */}
         <div className="search-box">
           <Search size={16} />
           <input
@@ -298,6 +207,7 @@ export default function Dashboard({ onLogout }) {
           />
         </div>
 
+        {/* TABLE */}
         <div className="table-card glass">
           <table>
             <thead>
@@ -311,9 +221,12 @@ export default function Dashboard({ onLogout }) {
                 {role === "admin" && <th>Actions</th>}
               </tr>
             </thead>
+
             <tbody>
               {loading ? (
-                <tr><td colSpan="7">Loading...</td></tr>
+                <tr>
+                  <td colSpan="7">Loading...</td>
+                </tr>
               ) : (
                 records.map((r) => (
                   <tr key={r.id}>
@@ -323,9 +236,13 @@ export default function Dashboard({ onLogout }) {
                     <td>{r.date}</td>
                     <td>{r.type}</td>
                     <td>{r.remarks}</td>
+
                     {role === "admin" && (
                       <td>
-                        <button className="icon-btn delete" onClick={() => setDeleteId(r.id)}>
+                        <button
+                          className="icon-btn delete"
+                          onClick={() => deleteRecord(r.id)}
+                        >
                           <Trash2 size={16} />
                         </button>
                       </td>
@@ -338,7 +255,6 @@ export default function Dashboard({ onLogout }) {
         </div>
 
       </motion.main>
-
     </div>
   );
 }

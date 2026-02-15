@@ -1,4 +1,4 @@
-const API_URL = "https://equiptrack-q9k9.onrender.com";
+const API_URL = process.env.REACT_APP_API_URL;
 
 export async function apiFetch(path, options = {}) {
   const res = await fetch(API_URL + path, {
