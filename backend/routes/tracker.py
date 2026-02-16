@@ -1,13 +1,14 @@
-from flask import Blueprint, request, jsonify, session
-from datetime import datetime, timedelta
+from flask import Blueprint, request, jsonify, session, send_file
+from datetime import datetime
 from models import db, MaintenanceRecord
+import io
+import pandas as pd
 
 tracker_bp = Blueprint("tracker", __name__)
 
 PER_PAGE = 10
 
 
-# ================= FETCH RECORDS =================
 @tracker_bp.route("/tracker/<mode>", methods=["GET"])
 def fetch_records(mode):
 
@@ -21,40 +22,18 @@ def fetch_records(mode):
 
     query = MaintenanceRecord.query
 
-    # 🔥 Custom date override (for weekly/monthly)
-    if from_date and to_date:
-        start = datetime.strptime(from_date, "%Y-%m-%d").date()
-        end = datetime.strptime(to_date, "%Y-%m-%d").date()
-        query = query.filter(MaintenanceRecord.date.between(start, end))
-
-    else:
-        today = datetime.today().date()
-
-        if mode == "daily":
-            query = query.filter_by(date=today)
-
-        elif mode == "weekly":
-            start = today - timedelta(days=today.weekday())
-            end = start + timedelta(days=6)
-            query = query.filter(MaintenanceRecord.date.between(start, end))
-
-        elif mode == "monthly":
-            query = query.filter(
-                MaintenanceRecord.date.month == today.month,
-                MaintenanceRecord.date.year == today.year
-            )
-
-    # Role filter
-    if session["role"] != "admin":
-        query = query.filter_by(engineer=session["username"])
-
-    # Search filter
     if search:
         query = query.filter(
             MaintenanceRecord.machine_id.ilike(f"%{search}%")
         )
 
-    pagination = query.paginate(page=page, per_page=PER_PAGE)
+    if from_date and to_date:
+        start = datetime.strptime(from_date, "%Y-%m-%d").date()
+        end = datetime.strptime(to_date, "%Y-%m-%d").date()
+        query = query.filter(MaintenanceRecord.date.between(start, end))
+
+    pagination = query.order_by(MaintenanceRecord.id.desc()) \
+                      .paginate(page=page, per_page=PER_PAGE)
 
     return jsonify({
         "records": [
@@ -73,7 +52,6 @@ def fetch_records(mode):
     })
 
 
-# ================= ADD RECORD =================
 @tracker_bp.route("/tracker/add", methods=["POST"])
 def add_record():
 
@@ -82,18 +60,12 @@ def add_record():
 
     data = request.get_json()
 
-    engineer_name = (
-        session["username"]
-        if session["role"] == "engineer"
-        else data.get("engineer")
-    )
-
     record = MaintenanceRecord(
         machine_id=data.get("machine"),
-        engineer=engineer_name,
+        engineer=session["username"],
         date=datetime.today().date(),
-        type=data.get("type"),
-        remarks=data.get("remarks")
+        type=data.get("type", "Repair"),
+        remarks=data.get("remarks", "")
     )
 
     db.session.add(record)
@@ -102,22 +74,30 @@ def add_record():
     return jsonify({"success": True})
 
 
-# ================= DELETE =================
-@tracker_bp.route("/tracker/delete/<int:record_id>", methods=["DELETE"])
-def delete_record(record_id):
+@tracker_bp.route("/tracker/export", methods=["GET"])
+def export_excel():
 
     if "user_id" not in session:
         return jsonify({"error": "Unauthorized"}), 401
 
-    if session["role"] != "admin":
-        return jsonify({"error": "Forbidden"}), 403
+    records = MaintenanceRecord.query.all()
 
-    record = MaintenanceRecord.query.get(record_id)
+    data = [{
+        "Machine": r.machine_id,
+        "Engineer": r.engineer,
+        "Date": r.date.strftime("%Y-%m-%d"),
+        "Type": r.type,
+        "Remarks": r.remarks
+    } for r in records]
 
-    if not record:
-        return jsonify({"error": "Not found"}), 404
+    df = pd.DataFrame(data)
 
-    db.session.delete(record)
-    db.session.commit()
+    output = io.BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
 
-    return jsonify({"success": True})
+    return send_file(
+        output,
+        download_name="equiptrack.xlsx",
+        as_attachment=True
+    )

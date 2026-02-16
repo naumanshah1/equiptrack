@@ -3,9 +3,6 @@ from models import User
 
 auth_bp = Blueprint("auth", __name__)
 
-# =========================
-# LOGIN
-# =========================
 @auth_bp.route("/login", methods=["POST"])
 def login():
     data = request.get_json()
@@ -15,10 +12,9 @@ def login():
     if not user or not user.check_password(data.get("password")):
         return jsonify({"error": "Invalid username or password"}), 401
 
-    # Store session data
     session["user_id"] = user.id
     session["role"] = user.role
-    session["username"] = user.username   # ✅ Important
+    session["username"] = user.username
 
     return jsonify({
         "success": True,
@@ -27,9 +23,6 @@ def login():
     })
 
 
-# =========================
-# LOGOUT
-# =========================
 @auth_bp.route("/logout", methods=["GET"])
 def logout():
     session.clear()

@@ -5,41 +5,52 @@ from datetime import datetime
 
 analytics_bp = Blueprint("analytics", __name__)
 
-@analytics_bp.route("/analytics/summary", methods=["GET"])
-def analytics_summary():
+@analytics_bp.route("/analytics", methods=["GET"])
+def get_analytics():
 
     if "user_id" not in session:
         return jsonify({"error": "Unauthorized"}), 401
 
+    # KPI counts
     total = MaintenanceRecord.query.count()
-
     repairs = MaintenanceRecord.query.filter_by(type="Repair").count()
     maintenance = MaintenanceRecord.query.filter_by(type="Maintenance").count()
 
-    # Daily trend
-    daily_data = (
+    # Monthly Trend
+    monthly_data = (
         MaintenanceRecord.query
-        .with_entities(MaintenanceRecord.date, func.count().label("count"))
-        .group_by(MaintenanceRecord.date)
-        .order_by(MaintenanceRecord.date)
+        .with_entities(
+            func.extract("month", MaintenanceRecord.date).label("month"),
+            func.count(MaintenanceRecord.id)
+        )
+        .group_by("month")
         .all()
     )
 
-    daily = [
-        {"date": str(d[0]), "count": d[1]}
-        for d in daily_data
+    monthly = [
+        {
+            "month": int(m[0]),
+            "count": m[1]
+        }
+        for m in monthly_data
     ]
 
-    # Engineer performance
+    # Engineer Performance
     engineer_data = (
         MaintenanceRecord.query
-        .with_entities(MaintenanceRecord.engineer, func.count().label("count"))
+        .with_entities(
+            MaintenanceRecord.engineer,
+            func.count(MaintenanceRecord.id)
+        )
         .group_by(MaintenanceRecord.engineer)
         .all()
     )
 
     engineers = [
-        {"engineer": e[0], "count": e[1]}
+        {
+            "engineer": e[0],
+            "count": e[1]
+        }
         for e in engineer_data
     ]
 
@@ -47,6 +58,6 @@ def analytics_summary():
         "total": total,
         "repairs": repairs,
         "maintenance": maintenance,
-        "daily": daily,
+        "monthly": monthly,
         "engineers": engineers
     })
