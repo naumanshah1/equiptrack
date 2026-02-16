@@ -21,7 +21,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret")
 # --------------------------------------------------
 db_url = os.environ.get("DATABASE_URL")
 
-# Fix Render postgres:// issue
+# Fix for old postgres:// format (Render compatibility)
 if db_url and db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
@@ -56,13 +56,13 @@ app.register_blueprint(tracker_bp)
 app.register_blueprint(analytics_bp)
 
 # --------------------------------------------------
-# SAFE INITIAL SETUP (BEST SOLUTION)
+# CREATE TABLES + DEFAULT USERS SAFELY
 # --------------------------------------------------
-def create_default_users():
-    try:
-        db.create_all()
+with app.app_context():
+    db.create_all()
 
-        # Admin
+    try:
+        # Create Admin if not exists
         admin = User.query.filter_by(username="admin").first()
         if not admin:
             admin = User(username="admin", role="admin")
@@ -70,7 +70,7 @@ def create_default_users():
             db.session.add(admin)
             print("Admin created")
 
-        # Engineer
+        # Create Engineer if not exists
         engineer = User.query.filter_by(username="engineer").first()
         if not engineer:
             engineer = User(username="engineer", role="engineer")
@@ -80,12 +80,12 @@ def create_default_users():
 
         db.session.commit()
 
+        # Log existing users
+        users = User.query.all()
+        print("Current users in DB:", [u.username for u in users])
+
     except Exception as e:
-        print("Error during default user creation:", e)
-
-
-with app.app_context():
-    create_default_users()
+        print("Error creating default users:", e)
 
 # --------------------------------------------------
 # SERVE REACT FRONTEND (SPA SUPPORT)
@@ -98,8 +98,7 @@ def serve(path):
     return send_from_directory(app.static_folder, "index.html")
 
 # --------------------------------------------------
-# RUN LOCALLY
+# LOCAL RUN (Render uses Gunicorn)
 # --------------------------------------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
+    app.run()
